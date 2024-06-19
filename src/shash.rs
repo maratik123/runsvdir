@@ -47,7 +47,7 @@ impl TryFrom<&Path> for Shash {
         let mut hasher = Sha256::new();
         hasher.update(path.as_os_str().as_encoded_bytes());
         hasher.update([0u8]);
-        hasher.update(path.len().to_ne_bytes());
+        hasher.update(path.len().to_le_bytes());
         hasher.update([0u8]);
         let mut buffer = [0; 1024];
         let mut file =
@@ -57,7 +57,7 @@ impl TryFrom<&Path> for Shash {
             match file.read(&mut buffer) {
                 Ok(0) => {
                     hasher.update([0u8]);
-                    hasher.update(total_len.to_ne_bytes());
+                    hasher.update(total_len.to_le_bytes());
                     break Ok(Self {
                         path: path.into(),
                         hash: hasher.finalize().into(),
