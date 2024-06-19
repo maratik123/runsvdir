@@ -1,4 +1,3 @@
-use anyhow::Error;
 use base64ct::{Base64Unpadded, Encoding};
 use nix::NixPath;
 use sha2::{Digest, Sha256};
@@ -6,8 +5,9 @@ use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, ErrorKind, Read};
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 
 #[derive(Debug, Clone)]
 pub struct Shash {
@@ -41,16 +41,17 @@ impl Display for Shash {
 }
 
 impl TryFrom<&Path> for Shash {
-    type Error = Error;
+    type Error = ShashError;
 
-    fn try_from(path: &Path) -> anyhow::Result<Self> {
+    fn try_from(path: &Path) -> Result<Self, ShashError> {
         let mut hasher = Sha256::new();
         hasher.update(path.as_os_str().as_encoded_bytes());
         hasher.update([0u8]);
         hasher.update(path.len().to_ne_bytes());
         hasher.update([0u8]);
         let mut buffer = [0; 1024];
-        let mut file = BufReader::new(File::open(path)?);
+        let mut file =
+            BufReader::new(File::open(path).map_err(|err| ShashError::OpenFile(path.into(), err))?);
         let mut total_len = 0usize;
         loop {
             match file.read(&mut buffer) {
@@ -58,7 +59,7 @@ impl TryFrom<&Path> for Shash {
                     hasher.update([0u8]);
                     hasher.update(total_len.to_ne_bytes());
                     break Ok(Self {
-                        path: PathBuf::from(path),
+                        path: path.into(),
                         hash: hasher.finalize().into(),
                     });
                 }
@@ -66,17 +67,24 @@ impl TryFrom<&Path> for Shash {
                     hasher.update(&buffer[..len]);
                     total_len += len;
                 }
-                Err(err) if err.kind() == io::ErrorKind::Interrupted => {}
-                Err(err) => break Err(err.into()),
+                Err(err) if err.kind() == ErrorKind::Interrupted => {}
+                Err(err) => Err(ShashError::ReadFile(path.into(), err))?,
             }
         }
     }
 }
 
+#[derive(Debug, Error)]
+pub enum ShashError {
+    #[error("Open file {0:?} failed: {1}")]
+    OpenFile(PathBuf, #[source] io::Error),
+    #[error("Read from file {0:?} failed: {1}")]
+    ReadFile(PathBuf, #[source] io::Error),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::ErrorKind;
 
     #[test]
     fn shash_test() {
@@ -96,14 +104,10 @@ mod tests {
     #[test]
     fn shash_non_existent_test() {
         let path = PathBuf::from("test_res/non_existent");
-        assert_eq!(
-            &Shash::try_from(path.as_path())
-                .unwrap_err()
-                .chain()
-                .map(|err| err.downcast_ref::<io::Error>().map(|err| err.kind()))
-                .collect::<Vec<_>>(),
-            &[Some(ErrorKind::NotFound)]
-        );
+        match Shash::try_from(path.as_path()).unwrap_err() {
+            ShashError::OpenFile(_, err) => assert_eq!(err.kind(), ErrorKind::NotFound),
+            err => panic!("Unexpected error: {err}"),
+        }
     }
 
     #[test]

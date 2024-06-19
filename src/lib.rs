@@ -1,2 +1,5 @@
 mod shash;
-pub use shash::Shash;
+mod step;
+
+pub use shash::{Shash, ShashError};
+pub use step::{step, StepError};
