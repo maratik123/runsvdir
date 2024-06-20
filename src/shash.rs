@@ -50,7 +50,7 @@ impl TryFrom<&Path> for Shash {
         hasher.update([0u8]);
         let mut buffer = vec![];
         let total_len = { File::open(path)?.read_to_end(&mut buffer)? };
-        hasher.update(&buffer[..]);
+        hasher.update(buffer);
         hasher.update([0u8]);
         hasher.update(total_len.to_le_bytes());
         Ok(Self {
