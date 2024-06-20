@@ -7,7 +7,6 @@ use std::hash::Hash;
 use std::io;
 use std::io::{BufReader, ErrorKind, Read};
 use std::path::{Path, PathBuf};
-use thiserror::Error;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Shash {
@@ -27,45 +26,36 @@ impl Display for Shash {
 }
 
 impl TryFrom<&Path> for Shash {
-    type Error = ShashError;
+    type Error = io::Error;
 
-    fn try_from(path: &Path) -> Result<Self, ShashError> {
+    fn try_from(path: &Path) -> io::Result<Self> {
         let mut hasher = Sha256::new();
         hasher.update(path.as_os_str().as_encoded_bytes());
         hasher.update([0u8]);
         hasher.update(path.len().to_le_bytes());
         hasher.update([0u8]);
+        let mut file = BufReader::new(File::open(path)?);
         let mut buffer = [0; 1024];
-        let mut file =
-            BufReader::new(File::open(path).map_err(|err| ShashError::OpenFile(path.into(), err))?);
         let mut total_len = 0usize;
-        loop {
+        Ok(loop {
             match file.read(&mut buffer) {
                 Ok(0) => {
                     hasher.update([0u8]);
                     hasher.update(total_len.to_le_bytes());
-                    break Ok(Self {
+                    break Self {
                         path: path.into(),
                         hash: hasher.finalize().into(),
-                    });
+                    };
                 }
                 Ok(len) => {
                     hasher.update(&buffer[..len]);
                     total_len += len;
                 }
                 Err(err) if err.kind() == ErrorKind::Interrupted => {}
-                Err(err) => Err(ShashError::ReadFile(path.into(), err))?,
+                Err(err) => Err(err)?,
             }
-        }
+        })
     }
-}
-
-#[derive(Debug, Error)]
-pub enum ShashError {
-    #[error("Open file {0:?} failed: {1}")]
-    OpenFile(PathBuf, #[source] io::Error),
-    #[error("Read from file {0:?} failed: {1}")]
-    ReadFile(PathBuf, #[source] io::Error),
 }
 
 #[cfg(test)]
@@ -89,18 +79,18 @@ mod tests {
 
     #[test]
     fn shash_non_existent_test() {
-        let path = PathBuf::from("test_res/non_existent");
-        match Shash::try_from(path.as_path()).unwrap_err() {
-            ShashError::OpenFile(_, err) => assert_eq!(err.kind(), ErrorKind::NotFound),
-            err => panic!("Unexpected error: {err}"),
-        }
+        let path = Path::new("test_res/non_existent");
+        assert_eq!(
+            Shash::try_from(path).unwrap_err().kind(),
+            ErrorKind::NotFound
+        );
     }
 
     #[test]
     fn shash_display_test() {
-        let path = PathBuf::from("test_res/c/run");
+        let path = Path::new("test_res/c/run");
         assert_eq!(
-            &Shash::try_from(path.as_path()).unwrap().to_string(),
+            &Shash::try_from(path).unwrap().to_string(),
             "jA3Ho3HqbKueuegDF0AXqC/hpuEJkBYKix73B3HQji0 [\"test_res/c/run\"]"
         );
     }

@@ -1,4 +1,4 @@
-use crate::{Shash, ShashError};
+use crate::Shash;
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use std::collections::hash_map::Entry;
@@ -19,7 +19,10 @@ pub fn step(dir: &Path, running: &mut HashMap<Shash, Child>) -> Result<(), StepE
             let mut p = d.path();
             p.push("run");
 
-            let hash: Shash = p.as_path().try_into()?;
+            let hash: Shash = p
+                .as_path()
+                .try_into()
+                .map_err(|err| StepError::Shash(p.clone(), err))?;
             if let Entry::Vacant(e) = running.entry(hash.clone()) {
                 info!("spawn {hash}");
                 e.insert(
@@ -73,8 +76,8 @@ pub enum StepError {
     ReadDir(PathBuf, #[source] io::Error),
     #[error("Reading dir entry on {0:?} failed: {1}")]
     ReadDirEntry(PathBuf, #[source] io::Error),
-    #[error("Hashing failed: {0}")]
-    Shash(#[from] ShashError),
+    #[error("Hashing on {0:?} failed: {1}")]
+    Shash(PathBuf, #[source] io::Error),
     #[error("Spawn process {0} failed: {1}")]
     Spawn(Shash, #[source] io::Error),
 }
