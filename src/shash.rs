@@ -4,9 +4,9 @@ use sha2::{Digest, Sha256};
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::hash::Hash;
-use std::io;
-use std::io::{BufReader, ErrorKind, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::{fmt, io};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Shash {
@@ -15,7 +15,7 @@ pub struct Shash {
 }
 
 impl Display for Shash {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{} [{:?}]",
@@ -34,26 +34,14 @@ impl TryFrom<&Path> for Shash {
         hasher.update([0u8]);
         hasher.update(path.len().to_le_bytes());
         hasher.update([0u8]);
-        let mut file = BufReader::new(File::open(path)?);
-        let mut buffer = [0; 1024];
-        let mut total_len = 0usize;
-        Ok(loop {
-            match file.read(&mut buffer) {
-                Ok(0) => {
-                    hasher.update([0u8]);
-                    hasher.update(total_len.to_le_bytes());
-                    break Self {
-                        path: path.into(),
-                        hash: hasher.finalize().into(),
-                    };
-                }
-                Ok(len) => {
-                    hasher.update(&buffer[..len]);
-                    total_len += len;
-                }
-                Err(err) if err.kind() == ErrorKind::Interrupted => {}
-                Err(err) => Err(err)?,
-            }
+        let mut buffer = vec![];
+        let total_len = { File::open(path)?.read_to_end(&mut buffer)? };
+        hasher.update(buffer);
+        hasher.update([0u8]);
+        hasher.update(total_len.to_le_bytes());
+        Ok(Self {
+            path: path.into(),
+            hash: hasher.finalize().into(),
         })
     }
 }
@@ -61,6 +49,7 @@ impl TryFrom<&Path> for Shash {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::ErrorKind;
 
     #[test]
     fn shash_test() {
