@@ -5,8 +5,11 @@ use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::hash::Hash;
 use std::io;
-use std::io::{BufReader, ErrorKind, Read};
+use std::io::{BufReader, ErrorKind};
 use std::path::{Path, PathBuf};
+use uninit::extension_traits::AsOut;
+use uninit::read::ReadIntoUninit;
+use uninit::uninit_array;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Shash {
@@ -35,11 +38,10 @@ impl TryFrom<&Path> for Shash {
         hasher.update(path.len().to_le_bytes());
         hasher.update([0u8]);
         let mut file = BufReader::new(File::open(path)?);
-        let mut buffer = [0; 1024];
         let mut total_len = 0usize;
         Ok(loop {
-            match file.read(&mut buffer) {
-                Ok(0) => {
+            match file.read_into_uninit(uninit_array![u8; 1024].as_out()) {
+                Ok([]) => {
                     hasher.update([0u8]);
                     hasher.update(total_len.to_le_bytes());
                     break Self {
@@ -47,9 +49,9 @@ impl TryFrom<&Path> for Shash {
                         hash: hasher.finalize().into(),
                     };
                 }
-                Ok(len) => {
-                    hasher.update(&buffer[..len]);
-                    total_len += len;
+                Ok(buf) => {
+                    total_len += buf.len();
+                    hasher.update(buf);
                 }
                 Err(err) if err.kind() == ErrorKind::Interrupted => {}
                 Err(err) => Err(err)?,
