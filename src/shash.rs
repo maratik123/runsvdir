@@ -4,10 +4,9 @@ use sha2::{Digest, Sha256};
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::hash::{Hash, Hasher};
-use std::io::{BufReader, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::{fmt, fs, io};
-use tracing::warn;
+use std::{fmt, io};
 
 #[derive(Debug, Clone)]
 pub struct Shash {
@@ -49,15 +48,8 @@ impl TryFrom<&Path> for Shash {
         hasher.update([0u8]);
         hasher.update(path.len().to_le_bytes());
         hasher.update([0u8]);
-        let total_len = fs::metadata(path)?.len() as usize;
-        let mut buffer = Vec::with_capacity(total_len);
-        let read_len = { BufReader::new(File::open(path)?).read_to_end(&mut buffer)? };
-
-        debug_assert_eq!(total_len, read_len);
-        if read_len != total_len {
-            warn!("can not read whole file on {path:?}, len from metadata = {total_len}, read len = {read_len}");
-        }
-
+        let mut buffer = vec![];
+        let total_len = { File::open(path)?.read_to_end(&mut buffer)? };
         hasher.update(&buffer[..]);
         hasher.update([0u8]);
         hasher.update(total_len.to_le_bytes());
