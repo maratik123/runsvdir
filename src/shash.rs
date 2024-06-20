@@ -3,30 +3,16 @@ use nix::NixPath;
 use sha2::{Digest, Sha256};
 use std::fmt::{Display, Formatter};
 use std::fs::File;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::io;
 use std::io::{BufReader, ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Shash {
     hash: [u8; 32],
     path: PathBuf,
-}
-
-impl PartialEq<Self> for Shash {
-    fn eq(&self, other: &Self) -> bool {
-        self.hash == other.hash
-    }
-}
-
-impl Eq for Shash {}
-
-impl Hash for Shash {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.hash.hash(state);
-    }
 }
 
 impl Display for Shash {
