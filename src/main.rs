@@ -1,5 +1,5 @@
 use clap::Parser;
-use runsvdir::step;
+use runsvdir::Stepper;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -30,11 +30,11 @@ fn main() {
         .with_writer(io::stderr)
         .init();
 
-    let mut running = HashMap::new();
     let pause = Duration::from_millis(args.pause);
+    let mut stepper = Stepper::new(args.dir);
 
     loop {
-        if let Err(err) = step(&args.dir, &mut running) {
+        if let Err(err) = stepper.invoke() {
             error!("step failed: {err}");
         }
         thread::sleep(pause);

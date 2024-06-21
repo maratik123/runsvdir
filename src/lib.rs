@@ -1,5 +1,5 @@
 mod shash;
-mod step;
+mod stepper;
 
 pub use shash::Shash;
-pub use step::{step, StepError};
+pub use stepper::{StepError, Stepper};
