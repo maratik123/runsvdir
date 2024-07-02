@@ -1,6 +1,5 @@
 use clap::Parser;
 use runsvdir::Stepper;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::{io, thread};

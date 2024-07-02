@@ -1,6 +1,6 @@
 use base64ct::{Base64Unpadded, Encoding};
 use nix::NixPath;
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha512_256};
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::hash::Hash;
@@ -32,31 +32,31 @@ impl TryFrom<&Path> for Shash {
     type Error = io::Error;
 
     fn try_from(path: &Path) -> io::Result<Self> {
-        let mut hasher = Sha256::new();
+        let mut hasher = Sha512_256::new();
         hasher.update(path.as_os_str().as_encoded_bytes());
         hasher.update([0u8]);
         hasher.update(path.len().to_le_bytes());
         hasher.update([0u8]);
         let mut file = BufReader::new(File::open(path)?);
         let mut total_len = 0usize;
-        Ok(loop {
+        loop {
             match file.read_into_uninit(uninit_array![u8; 1024].as_out()) {
                 Ok([]) => {
                     hasher.update([0u8]);
                     hasher.update(total_len.to_le_bytes());
-                    break Self {
+                    break Ok(Self {
                         path: path.into(),
                         hash: hasher.finalize().into(),
-                    };
+                    });
                 }
                 Ok(buf) => {
                     total_len += buf.len();
                     hasher.update(buf);
                 }
                 Err(err) if err.kind() == ErrorKind::Interrupted => {}
-                Err(err) => Err(err)?,
+                Err(err) => break Err(err),
             }
-        })
+        }
     }
 }
 
@@ -71,8 +71,8 @@ mod tests {
             Shash::try_from(path.as_path()).unwrap(),
             Shash {
                 hash: [
-                    140, 13, 199, 163, 113, 234, 108, 171, 158, 185, 232, 3, 23, 64, 23, 168, 47,
-                    225, 166, 225, 9, 144, 22, 10, 139, 30, 247, 7, 113, 208, 142, 45
+                    27, 71, 26, 187, 63, 147, 245, 247, 19, 51, 76, 49, 61, 10, 111, 254, 80, 125,
+                    141, 73, 195, 219, 77, 157, 188, 235, 73, 136, 149, 249, 104, 111
                 ],
                 path
             }
@@ -93,7 +93,7 @@ mod tests {
         let path = Path::new("test_res/c/run");
         assert_eq!(
             &Shash::try_from(path).unwrap().to_string(),
-            "jA3Ho3HqbKueuegDF0AXqC/hpuEJkBYKix73B3HQji0 [\"test_res/c/run\"]"
+            "G0cauz+T9fcTM0wxPQpv/lB9jUnD202dvOtJiJX5aG8 [\"test_res/c/run\"]"
         );
     }
 }

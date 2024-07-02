@@ -25,12 +25,12 @@ impl Stepper {
 
     pub fn invoke(&mut self) -> Result<(), StepError> {
         let mut cur = HashSet::new();
+        let dir = self.dir.as_path();
 
-        for d in read_dir(self.dir.as_path())
-            .map_err(|err| StepError::ReadDir(self.dir.as_path().into(), err))?
-        {
-            let f = || {
-                let d = d.map_err(|err| StepError::ReadDirEntry(self.dir.as_path().into(), err))?;
+        read_dir(dir)
+            .map_err(|err| StepError::ReadDir(dir.into(), err))?
+            .map(|d| {
+                let d = d.map_err(|err| StepError::ReadDirEntry(dir.into(), err))?;
                 let mut p = d.path();
                 p.push("run");
 
@@ -52,13 +52,10 @@ impl Stepper {
                     info!("{hash} is already running");
                 }
                 cur.insert(hash);
-                Ok::<_, StepError>(())
-            };
-
-            if let Err(err) = f() {
-                error!("skipping entry, err: {err}");
-            }
-        }
+                Ok(())
+            })
+            .flat_map(Result::err)
+            .for_each(|err: StepError| error!("skipping entry, err: {err}"));
 
         self.running.retain(|hash, child| {
             if !cur.contains(hash) {
@@ -108,6 +105,10 @@ mod tests {
         let mut stepper = Stepper::new(PathBuf::from("test_res"));
         stepper.invoke().unwrap();
 
+        for child in stepper.running.values_mut() {
+            let _ = child.kill();
+        }
+
         assert_eq!(
             stepper.running.keys().collect::<HashSet<_>>(),
             HashSet::from([
@@ -115,9 +116,5 @@ mod tests {
                 &Shash::try_from(Path::new("test_res/d/run")).unwrap()
             ])
         );
-
-        for child in stepper.running.values_mut() {
-            let _ = child.kill();
-        }
     }
 }
